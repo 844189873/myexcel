@@ -15,15 +15,12 @@
  */
 package com.github.liaochong.myexcel.utils;
 
-import lombok.experimental.UtilityClass;
-
 import java.util.Objects;
 
 /**
  * @author liaochong
  * @version 1.0
  */
-@UtilityClass
 public final class StringUtil {
 
     public static String toUpperCaseFirst(String content) {
@@ -38,11 +35,11 @@ public final class StringUtil {
     }
 
     public static boolean isBlank(String content) {
-        return Objects.isNull(content) || content.trim().length() == 0;
+        return content == null || content.trim().length() == 0;
     }
 
     public static boolean isNotBlank(String content) {
-        return Objects.nonNull(content) && content.trim().length() > 0;
+        return content != null && content.trim().length() > 0;
     }
 
 }

@@ -16,35 +16,34 @@
 package com.github.liaochong.myexcel.core.style;
 
 import com.github.liaochong.myexcel.utils.ColorUtil;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFColor;
+import org.slf4j.Logger;
 
 import java.awt.*;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * @author liaochong
  * @version 1.0
  */
-@Slf4j
 public final class BackgroundStyle {
 
     public static final String BACKGROUND_COLOR = "background-color";
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(BackgroundStyle.class);
 
     public static void setBackgroundColor(CellStyle style, Map<String, String> tdStyle, CustomColor customColor) {
-        if (Objects.isNull(tdStyle)) {
+        if (tdStyle == null) {
             return;
         }
         String color = tdStyle.get(BACKGROUND_COLOR);
-        if (Objects.isNull(color)) {
+        if (color == null) {
             return;
         }
         Short colorPredefined = ColorUtil.getPredefinedColorIndex(color);
-        if (Objects.nonNull(colorPredefined)) {
+        if (colorPredefined != null) {
             style.setFillForegroundColor(colorPredefined);
             style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             return;
@@ -58,7 +57,7 @@ public final class BackgroundStyle {
     }
 
     private static void setCustomColor(CellStyle style, int[] rgb, CustomColor customColor) {
-        if (Objects.isNull(rgb)) {
+        if (rgb == null) {
             return;
         }
         XSSFCellStyle xssfCellStyle = (XSSFCellStyle) style;

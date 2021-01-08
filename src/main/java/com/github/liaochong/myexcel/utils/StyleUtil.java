@@ -17,13 +17,11 @@ package com.github.liaochong.myexcel.utils;
 
 import com.github.liaochong.myexcel.core.cache.Cache;
 import com.github.liaochong.myexcel.core.cache.WeakCache;
-import lombok.experimental.UtilityClass;
 import org.jsoup.nodes.Element;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * 样式工具
@@ -31,18 +29,22 @@ import java.util.Objects;
  * @author liaochong
  * @version 1.0
  */
-@UtilityClass
 public final class StyleUtil {
 
     private static final Cache<String, Map<String, String>> STYLE_CACHE = new WeakCache<>();
 
     public static Map<String, String> parseStyle(Element element) {
         String style = element.attr("style");
+        return parseStyle(style);
+    }
+
+
+    public static Map<String, String> parseStyle(String style) {
         if (style.length() == 0) {
             return Collections.emptyMap();
         }
         Map<String, String> cacheResult = STYLE_CACHE.get(style);
-        if (Objects.nonNull(cacheResult)) {
+        if (cacheResult != null) {
             return cacheResult;
         }
         String[] styleArr = style.split(";");
@@ -67,6 +69,7 @@ public final class StyleUtil {
         return result;
     }
 
+
     /**
      * 样式融合
      *
@@ -75,19 +78,18 @@ public final class StyleUtil {
      * @return 结果
      */
     public static Map<String, String> mixStyle(Map<String, String> originStyle, Map<String, String> targetStyle) {
-        if (Objects.isNull(targetStyle) && Objects.isNull(originStyle)) {
+        if (targetStyle == null && originStyle == null) {
             return Collections.emptyMap();
         }
-        Map<String, String> result = new HashMap<>();
-        if (Objects.isNull(targetStyle)) {
-            originStyle.forEach(result::put);
-            return result;
-        } else if (Objects.isNull(originStyle)) {
-            targetStyle.forEach(result::put);
-            return result;
+        if (targetStyle == null) {
+            return new HashMap<>(originStyle);
+        } else if (originStyle == null) {
+            return new HashMap<>(targetStyle);
         }
-        targetStyle.forEach(result::put);
+        // 相加的两倍，防止扩容。
+        Map<String, String> result = new HashMap<>((targetStyle.size() + originStyle.size()) * 2);
         originStyle.forEach(result::putIfAbsent);
+        targetStyle.forEach(result::put);
         return result;
     }
 }

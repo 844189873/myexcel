@@ -17,6 +17,7 @@ package com.github.liaochong.myexcel.core.style;
 
 import com.github.liaochong.myexcel.utils.ColorUtil;
 import com.github.liaochong.myexcel.utils.StringUtil;
+import com.github.liaochong.myexcel.utils.TdUtil;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.xssf.usermodel.XSSFColor;
@@ -24,10 +25,11 @@ import org.apache.poi.xssf.usermodel.XSSFFont;
 
 import java.awt.*;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
+ * 字体样式
+ *
  * @author liaochong
  * @version 1.0
  */
@@ -49,83 +51,86 @@ public final class FontStyle {
 
     public static final String LINE_THROUGH = "line-through";
 
+    public static final String UNDERLINE = "underline";
+
     public static final String BOLD = "bold";
 
     public static final short DEFAULT_FONT_SIZE = 12;
 
     public static void setFont(Supplier<Font> fontSupplier, CellStyle cellStyle, Map<String, String> tdStyle, Map<String, Font> fontMap, CustomColor customColor) {
-        String cacheKey = getCacheKey(tdStyle);
-        if (Objects.nonNull(fontMap.get(cacheKey))) {
-            cellStyle.setFont(fontMap.get(cacheKey));
-            return;
-        }
-        Font font = null;
-        String fs = tdStyle.get(FONT_SIZE);
-        if (Objects.nonNull(fs)) {
-            fs = fs.replaceAll("\\D*", "");
-            short fontSize = Short.parseShort(fs);
-            font = fontSupplier.get();
-            font.setFontHeightInPoints(fontSize);
-        }
-        String fontFamily = tdStyle.get(FONT_FAMILY);
-        if (Objects.nonNull(fontFamily)) {
-            font = createFontIfNull(fontSupplier, font);
-            font.setFontName(fontFamily);
-        }
-        String italic = tdStyle.get(FONT_STYLE);
-        if (Objects.equals(ITALIC, italic)) {
-            font = createFontIfNull(fontSupplier, font);
-            font.setItalic(true);
-        }
-        String strikeout = tdStyle.get(TEXT_DECORATION);
-        if (Objects.equals(strikeout, LINE_THROUGH)) {
-            font = createFontIfNull(fontSupplier, font);
-            font.setStrikeout(true);
-        }
-        String fontWeight = tdStyle.get(FONT_WEIGHT);
-        if (Objects.equals(fontWeight, BOLD)) {
-            font = createFontIfNull(fontSupplier, font);
-            font.setBold(true);
-        }
-        String fontColor = tdStyle.get(FONT_COLOR);
-        if (StringUtil.isNotBlank(fontColor)) {
-            font = setFontColor(fontSupplier, customColor, fontColor);
-        }
-        if (Objects.nonNull(font)) {
+        Font font = getFont(tdStyle, fontMap, fontSupplier, customColor);
+        if (font != null) {
             cellStyle.setFont(font);
-            fontMap.put(cacheKey, font);
         }
     }
 
-    private static Font setFontColor(Supplier<Font> fontSupplier, CustomColor customColor, String fontColor) {
-        Short colorPredefined = ColorUtil.getPredefinedColorIndex(fontColor);
-        if (Objects.nonNull(colorPredefined)) {
-            Font font = fontSupplier.get();
+    public static Font getFont(Map<String, String> style, Map<String, Font> fontMap, Supplier<Font> fontSupplier, CustomColor customColor) {
+        String cacheKey = getCacheKey(style);
+        if (fontMap.get(cacheKey) != null) {
+            return fontMap.get(cacheKey);
+        }
+        Font font = null;
+        String fs = style.get(FONT_SIZE);
+        if (fs != null) {
+            short fontSize = (short) TdUtil.getValue(fs);
+            font = fontSupplier.get();
+            font.setFontHeightInPoints(fontSize);
+        }
+        String fontFamily = style.get(FONT_FAMILY);
+        if (fontFamily != null) {
             font = createFontIfNull(fontSupplier, font);
+            font.setFontName(fontFamily);
+        }
+        String italic = style.get(FONT_STYLE);
+        if (ITALIC.equals(italic)) {
+            font = createFontIfNull(fontSupplier, font);
+            font.setItalic(true);
+        }
+        String textDecoration = style.get(TEXT_DECORATION);
+        if (LINE_THROUGH.equals(textDecoration)) {
+            font = createFontIfNull(fontSupplier, font);
+            font.setStrikeout(true);
+        } else if (UNDERLINE.equals(textDecoration)) {
+            font = createFontIfNull(fontSupplier, font);
+            font.setUnderline(Font.U_SINGLE);
+        }
+        String fontWeight = style.get(FONT_WEIGHT);
+        if (BOLD.equals(fontWeight)) {
+            font = createFontIfNull(fontSupplier, font);
+            font.setBold(true);
+        }
+        String fontColor = style.get(FONT_COLOR);
+        if (StringUtil.isNotBlank(fontColor)) {
+            font = createFontIfNull(fontSupplier, font);
+            font = setFontColor(font, customColor, fontColor);
+        }
+        if (font != null) {
+            fontMap.put(cacheKey, font);
+        }
+        return font;
+    }
+
+    private static Font setFontColor(Font font, CustomColor customColor, String fontColor) {
+        Short colorPredefined = ColorUtil.getPredefinedColorIndex(fontColor);
+        if (colorPredefined != null) {
             font.setColor(colorPredefined);
             return font;
         }
         int[] rgb = ColorUtil.getRGBByColor(fontColor);
-        if (Objects.isNull(rgb)) {
+        if (rgb == null) {
             return null;
         }
-        Font font = null;
         if (customColor.isXls()) {
             short index = ColorUtil.getCustomColorIndex(customColor, rgb);
-            font = createFontIfNull(fontSupplier, font);
             font.setColor(index);
         } else {
-            font = createFontIfNull(fontSupplier, font);
             ((XSSFFont) font).setColor(new XSSFColor(new Color(rgb[0], rgb[1], rgb[2]), customColor.getDefaultIndexedColorMap()));
         }
         return font;
     }
 
     private static Font createFontIfNull(Supplier<Font> fontSupplier, Font font) {
-        if (Objects.isNull(font)) {
-            font = fontSupplier.get();
-        }
-        return font;
+        return font == null ? fontSupplier.get() : font;
     }
 
     private static String getCacheKey(Map<String, String> tdStyle) {
@@ -141,7 +146,7 @@ public final class FontStyle {
 
     private static void appendKey(Map<String, String> tdStyle, String styleName, StringBuilder result) {
         String style = tdStyle.get(styleName);
-        if (Objects.nonNull(style)) {
+        if (style != null) {
             result.append(styleName).append(":").append(style).append("_");
         }
     }

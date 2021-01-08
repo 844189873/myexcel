@@ -15,18 +15,33 @@
  */
 package com.github.liaochong.myexcel.utils;
 
+import com.github.liaochong.myexcel.core.annotation.ExcelColumn;
+import com.github.liaochong.myexcel.core.cache.WeakCache;
 import com.github.liaochong.myexcel.core.reflect.ClassFieldContainer;
-import lombok.experimental.UtilityClass;
 
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * @author liaochong
  * @version 1.0
  */
-@UtilityClass
 public final class ReflectUtil {
+
+    private static final WeakCache<Class<?>, Map<Integer, Field>> FIELD_CACHE = new WeakCache<>();
+
+    private static final WeakCache<Class<?>, Map<String, Field>> TITLE_FIELD_CACHE = new WeakCache<>();
 
     /**
      * 获取指定类的所有字段，包含父类字段，其中
@@ -40,6 +55,74 @@ public final class ReflectUtil {
         return container;
     }
 
+    public static Map<Integer, Field> getFieldMapOfExcelColumn(Class<?> dataType) {
+        if (dataType == Map.class) {
+            return Collections.emptyMap();
+        }
+        Map<Integer, Field> fieldMap = FIELD_CACHE.get(dataType);
+        if (fieldMap != null) {
+            return fieldMap;
+        }
+        ClassFieldContainer classFieldContainer = ReflectUtil.getAllFieldsOfClass(dataType);
+        List<Field> fields = classFieldContainer.getFieldsByAnnotation(ExcelColumn.class);
+        if (fields.isEmpty()) {
+            // If no field contains an ExcelColumn annotation, all fields are read in the default order
+            List<Field> allFields = classFieldContainer.getFields();
+            fieldMap = new HashMap<>(allFields.size());
+            for (int i = 0, size = allFields.size(); i < size; i++) {
+                fieldMap.put(i, allFields.get(i));
+            }
+        } else {
+            fieldMap = new HashMap<>(fields.size());
+            for (Field field : fields) {
+                ExcelColumn excelColumn = field.getAnnotation(ExcelColumn.class);
+                int index = excelColumn.index();
+                if (index < 0) {
+                    continue;
+                }
+                Field f = fieldMap.get(index);
+                if (Objects.nonNull(f)) {
+                    throw new IllegalStateException("Index cannot be repeated: " + index + ". Please check it.");
+                }
+                field.setAccessible(true);
+                fieldMap.put(index, field);
+            }
+        }
+        FIELD_CACHE.cache(dataType, fieldMap);
+        return fieldMap;
+    }
+
+    public static Map<String, Field> getFieldMapOfTitleExcelColumn(Class<?> dataType) {
+        if (dataType == Map.class) {
+            return Collections.emptyMap();
+        }
+        Map<String, Field> fieldMap = TITLE_FIELD_CACHE.get(dataType);
+        if (fieldMap != null) {
+            return fieldMap;
+        }
+        ClassFieldContainer classFieldContainer = ReflectUtil.getAllFieldsOfClass(dataType);
+        List<Field> fields = classFieldContainer.getFieldsByAnnotation(ExcelColumn.class);
+        if (fields.isEmpty()) {
+            throw new IllegalStateException("There is no field with @ExcelColumn");
+        }
+        fieldMap = new HashMap<>(fields.size());
+        for (Field field : fields) {
+            ExcelColumn excelColumn = field.getAnnotation(ExcelColumn.class);
+            String title = excelColumn.title();
+            if (title.isEmpty()) {
+                continue;
+            }
+            Field f = fieldMap.get(title);
+            if (f != null) {
+                throw new IllegalStateException("Title cannot be repeated: " + title + ". Please check it.");
+            }
+            field.setAccessible(true);
+            fieldMap.put(title, field);
+        }
+        TITLE_FIELD_CACHE.cache(dataType, fieldMap);
+        return fieldMap;
+    }
+
     /**
      * 根据对象以及指定字段，获取字段的值
      *
@@ -48,7 +131,7 @@ public final class ReflectUtil {
      * @return 字段值
      */
     public static Object getFieldValue(Object o, Field field) {
-        if (Objects.isNull(o) || Objects.isNull(field)) {
+        if (o == null || field == null) {
             return null;
         }
         try {
@@ -70,6 +153,69 @@ public final class ReflectUtil {
             ClassFieldContainer parentContainer = new ClassFieldContainer();
             container.setParent(parentContainer);
             getAllFieldsOfClass(clazz.getSuperclass(), parentContainer);
+        }
+    }
+
+    public static boolean isNumber(Class clazz) {
+        return clazz == Double.class || clazz == double.class
+                || clazz == Float.class || clazz == float.class
+                || clazz == Long.class || clazz == long.class
+                || clazz == Integer.class || clazz == int.class
+                || clazz == Short.class || clazz == short.class
+                || clazz == Byte.class || clazz == byte.class
+                || clazz == BigDecimal.class || clazz == BigInteger.class;
+    }
+
+    public static boolean isBool(Class clazz) {
+        return clazz == boolean.class || clazz == Boolean.class;
+    }
+
+    public static boolean isDate(Class clazz) {
+        return clazz == Date.class || clazz == LocalDateTime.class || clazz == LocalDate.class;
+    }
+
+    public static int sortFields(Field field1, Field field2) {
+        ExcelColumn excelColumn1 = field1.getAnnotation(ExcelColumn.class);
+        ExcelColumn excelColumn2 = field2.getAnnotation(ExcelColumn.class);
+        if (excelColumn1 == null && excelColumn2 == null) {
+            return 0;
+        }
+        int defaultOrder = 0;
+        int order1 = defaultOrder;
+        if (excelColumn1 != null) {
+            order1 = excelColumn1.order();
+        }
+        int order2 = defaultOrder;
+        if (excelColumn2 != null) {
+            order2 = excelColumn2.order();
+        }
+        if (order1 == order2) {
+            return 0;
+        }
+        return order1 > order2 ? 1 : -1;
+    }
+
+    public static boolean isFieldSelected(List<Class<?>> selectedGroupList, Field field) {
+        if (selectedGroupList.isEmpty()) {
+            return true;
+        }
+        ExcelColumn excelColumn = field.getAnnotation(ExcelColumn.class);
+        if (excelColumn == null) {
+            return false;
+        }
+        Class<?>[] groupArr = excelColumn.groups();
+        if (groupArr.length == 0) {
+            return false;
+        }
+        List<Class<?>> reservedGroupList = Arrays.stream(groupArr).collect(Collectors.toList());
+        return reservedGroupList.stream().anyMatch(selectedGroupList::contains);
+    }
+
+    public static <T> T newInstance(Class<T> clazz) {
+        try {
+            return clazz.newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }

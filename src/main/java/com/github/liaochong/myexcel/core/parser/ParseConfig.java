@@ -14,10 +14,7 @@
  */
 package com.github.liaochong.myexcel.core.parser;
 
-import com.github.liaochong.myexcel.core.strategy.AutoWidthStrategy;
-import lombok.AccessLevel;
-import lombok.Data;
-import lombok.experimental.FieldDefaults;
+import com.github.liaochong.myexcel.core.strategy.WidthStrategy;
 
 /**
  * 解析配置
@@ -25,19 +22,30 @@ import lombok.experimental.FieldDefaults;
  * @author liaochong
  * @version 1.0
  */
-@Data
-@FieldDefaults(level = AccessLevel.PRIVATE)
 public class ParseConfig {
 
-    AutoWidthStrategy autoWidthStrategy;
+    private WidthStrategy widthStrategy;
 
-    boolean isCustomWidth;
+    private boolean isComputeAutoWidth;
 
-    boolean isComputeAutoWidth;
+    public ParseConfig(WidthStrategy widthStrategy) {
+        this.widthStrategy = widthStrategy;
+        this.isComputeAutoWidth = WidthStrategy.isComputeAutoWidth(widthStrategy);
+    }
 
-    public void setAutoWidthStrategy(AutoWidthStrategy autoWidthStrategy) {
-        this.autoWidthStrategy = autoWidthStrategy;
-        this.isCustomWidth = AutoWidthStrategy.isCustomWidth(autoWidthStrategy);
-        this.isComputeAutoWidth = AutoWidthStrategy.isComputeAutoWidth(autoWidthStrategy);
+    public WidthStrategy getWidthStrategy() {
+        return this.widthStrategy;
+    }
+
+    public boolean isComputeAutoWidth() {
+        return this.isComputeAutoWidth;
+    }
+
+    public void setWidthStrategy(WidthStrategy widthStrategy) {
+        this.widthStrategy = widthStrategy;
+    }
+
+    public void setComputeAutoWidth(boolean isComputeAutoWidth) {
+        this.isComputeAutoWidth = isComputeAutoWidth;
     }
 }

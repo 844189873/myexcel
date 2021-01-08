@@ -15,23 +15,7 @@
  */
 package com.github.liaochong.myexcel.core;
 
-import com.github.liaochong.myexcel.core.io.TempFileOperator;
-import com.github.liaochong.myexcel.core.strategy.AutoWidthStrategy;
-import com.github.liaochong.myexcel.exception.ExcelBuildException;
-import org.apache.commons.codec.CharEncoding;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.beetl.core.Configuration;
-import org.beetl.core.GroupTemplate;
-import org.beetl.core.Template;
-import org.beetl.core.resource.ClasspathResourceLoader;
-
-import java.io.IOException;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-import java.util.Objects;
+import com.github.liaochong.myexcel.core.templatehandler.BeetlTemplateHandler;
 
 /**
  * beetl excel创建者
@@ -40,40 +24,7 @@ import java.util.Objects;
  * @version 1.0
  */
 public class BeetlExcelBuilder extends AbstractExcelBuilder {
-
-    private Template template;
-
     public BeetlExcelBuilder() {
-        autoWidthStrategy(AutoWidthStrategy.AUTO_WIDTH);
-    }
-
-    @Override
-    public ExcelBuilder template(String path) {
-        try {
-            String[] filePath = this.splitFilePath(path);
-            ClasspathResourceLoader resourceLoader = new ClasspathResourceLoader(filePath[0]);
-            Configuration cfg = Configuration.defaultConfiguration();
-            cfg.setCharset(CharEncoding.UTF_8);
-            GroupTemplate gt = new GroupTemplate(resourceLoader, cfg);
-            template = gt.getTemplate(filePath[1]);
-            return this;
-        } catch (IOException e) {
-            throw ExcelBuildException.of("Failed to get beetl template", e);
-        }
-    }
-
-    @Override
-    public <T> Workbook build(Map<String, T> renderData) {
-        Objects.requireNonNull(template, "The template cannot be empty. Please set the template first.");
-        Path htmlFile = tempFileOperator.createTempFile("beetl_temp_", TempFileOperator.HTML_SUFFIX);
-        try (Writer out = Files.newBufferedWriter(htmlFile, StandardCharsets.UTF_8)) {
-            template.binding(renderData);
-            template.renderTo(out);
-            return HtmlToExcelFactory.readHtml(htmlFile.toFile(), htmlToExcelFactory).build();
-        } catch (Exception e) {
-            throw ExcelBuildException.of("Failed to build excel", e);
-        } finally {
-            tempFileOperator.deleteTempFile();
-        }
+        super(BeetlTemplateHandler.class);
     }
 }

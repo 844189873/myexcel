@@ -15,21 +15,14 @@
  */
 package com.github.liaochong.myexcel.core;
 
-import com.github.liaochong.myexcel.core.container.Pair;
-import com.github.liaochong.myexcel.core.parser.Table;
-import com.github.liaochong.myexcel.core.parser.Tr;
-import com.github.liaochong.myexcel.core.reflect.ClassFieldContainer;
-import com.github.liaochong.myexcel.utils.ReflectUtil;
-import lombok.NonNull;
-import lombok.extern.slf4j.Slf4j;
+import com.github.liaochong.myexcel.core.strategy.AutoWidthStrategy;
+import com.github.liaochong.myexcel.core.strategy.WidthStrategy;
 import org.apache.poi.ss.usermodel.Workbook;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.Map;
 
 /**
  * 默认excel创建者
@@ -37,104 +30,167 @@ import java.util.Optional;
  * @author liaochong
  * @version 1.0
  */
-@Slf4j
-public class DefaultExcelBuilder extends AbstractSimpleExcelBuilder {
+public class DefaultExcelBuilder<T> implements Closeable {
 
-    private Workbook workbook;
+    private static final String STYLE_COMMON_TD = "border-top-style:thin;border-right-style:thin;border-bottom-style:thin;border-left-style:thin;";
 
-    private DefaultExcelBuilder() {
-    }
+    private static final String STYLE_TITLE = "font-weight:bold;font-size:14;text-align:center;vertical-align:middle;";
 
-    /**
-     * 获取实例，已废弃，请使用of方法代替
-     *
-     * @return DefaultExcelBuilder
-     */
-    @Deprecated
-    public static DefaultExcelBuilder getInstance() {
-        return new DefaultExcelBuilder();
+    private DefaultStreamExcelBuilder<T> streamExcelBuilder;
+
+    private DefaultExcelBuilder(DefaultStreamExcelBuilder<T> streamExcelBuilder) {
+        streamExcelBuilder.widthStrategy(WidthStrategy.COMPUTE_AUTO_WIDTH);
+        streamExcelBuilder.style("title->" + STYLE_COMMON_TD + STYLE_TITLE, "even->" + STYLE_COMMON_TD,
+                "odd->" + STYLE_COMMON_TD + "background-color:#f6f8fa;");
+        this.streamExcelBuilder = streamExcelBuilder;
     }
 
     /**
      * 获取实例，设定需要渲染的数据的类类型
      *
      * @param dataType 数据的类类型
+     * @param <T>      T
      * @return DefaultExcelBuilder
      */
-    public static DefaultExcelBuilder of(@NonNull Class<?> dataType) {
-        DefaultExcelBuilder defaultExcelBuilder = new DefaultExcelBuilder();
-        defaultExcelBuilder.dataType = dataType;
+    public static <T> DefaultExcelBuilder<T> of(Class<T> dataType) {
+        DefaultExcelBuilder<T> defaultExcelBuilder = new DefaultExcelBuilder<>(DefaultStreamExcelBuilder.of(dataType));
+        defaultExcelBuilder.streamExcelBuilder.workbookType(WorkbookType.XLSX);
         return defaultExcelBuilder;
     }
 
-    public static DefaultExcelBuilder of(@NonNull Class<?> dataType, @NonNull Workbook workbook) {
-        DefaultExcelBuilder defaultExcelBuilder = new DefaultExcelBuilder();
-        defaultExcelBuilder.dataType = dataType;
-        defaultExcelBuilder.workbook = workbook;
+    public static <T> DefaultExcelBuilder<T> of(Class<T> dataType, Workbook workbook) {
+        return new DefaultExcelBuilder<>(DefaultStreamExcelBuilder.of(dataType, workbook));
+    }
+
+    /**
+     * 已过时，获取实例，请使用of方法代替
+     *
+     * @return DefaultExcelBuilder
+     */
+    @Deprecated
+    public static DefaultExcelBuilder<Map> getInstance() {
+        DefaultExcelBuilder<Map> defaultExcelBuilder = new DefaultExcelBuilder<>(DefaultStreamExcelBuilder.getInstance());
+        defaultExcelBuilder.streamExcelBuilder.workbookType(WorkbookType.XLSX);
         return defaultExcelBuilder;
+    }
+
+    /**
+     * 已过时，获取实例，请使用of方法代替
+     *
+     * @param workbook workbook
+     * @return DefaultExcelBuilder
+     */
+    @Deprecated
+    public static DefaultExcelBuilder<Map> getInstance(Workbook workbook) {
+        return new DefaultExcelBuilder<>(DefaultStreamExcelBuilder.getInstance(workbook));
+    }
+
+    public DefaultExcelBuilder<T> titles(List<String> titles) {
+        streamExcelBuilder.titles(titles);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> sheetName(String sheetName) {
+        streamExcelBuilder.sheetName(sheetName);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> fieldDisplayOrder(List<String> fieldDisplayOrder) {
+        streamExcelBuilder.fieldDisplayOrder(fieldDisplayOrder);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> workbookType(WorkbookType workbookType) {
+        streamExcelBuilder.workbookType(workbookType);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> noStyle() {
+        streamExcelBuilder.noStyle();
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> widthStrategy(WidthStrategy widthStrategy) {
+        streamExcelBuilder.widthStrategy(widthStrategy);
+        return this;
+    }
+
+    @Deprecated
+    public DefaultExcelBuilder<T> autoWidthStrategy(AutoWidthStrategy autoWidthStrategy) {
+        streamExcelBuilder.autoWidthStrategy(autoWidthStrategy);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> fixedTitles() {
+        streamExcelBuilder.fixedTitles();
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> freezePane(FreezePane freezePane) {
+        streamExcelBuilder.freezePane(freezePane);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> widths(int... widths) {
+        streamExcelBuilder.widths(widths);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> width(int columnIndex, int width) {
+        streamExcelBuilder.width(columnIndex, width);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> hideColumns(int... columnIndexs) {
+        streamExcelBuilder.hideColumns(columnIndexs);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> groups(Class<?>... groups) {
+        streamExcelBuilder.groups(groups);
+        return this;
+    }
+
+    @Deprecated
+    public DefaultExcelBuilder<T> globalStyle(String... styles) {
+        return style(styles);
+    }
+
+    public DefaultExcelBuilder<T> style(String... styles) {
+        streamExcelBuilder.style(styles);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> titleRowHeight(int titleRowHeight) {
+        streamExcelBuilder.titleRowHeight(titleRowHeight);
+        return this;
+    }
+
+    public DefaultExcelBuilder<T> rowHeight(int rowHeight) {
+        streamExcelBuilder.rowHeight(rowHeight);
+        return this;
+    }
+
+    public Workbook build(List<T> data) {
+        try {
+            streamExcelBuilder.start();
+            streamExcelBuilder.append(data);
+            return streamExcelBuilder.build();
+        } catch (Exception e) {
+            try {
+                streamExcelBuilder.close();
+            } catch (IOException e1) {
+                e1.printStackTrace();
+                // do nothing
+            }
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
-    public Workbook build(List<?> data, Class<?>... groups) {
-        HtmlToExcelFactory htmlToExcelFactory = new HtmlToExcelFactory();
-        List<Table> tableList = new ArrayList<>();
-        if (Objects.isNull(dataType)) {
-            if (Objects.isNull(data) || data.isEmpty()) {
-                log.info("No valid data exists");
-                return htmlToExcelFactory.build(this.getTableWithHeader());
-            }
-            Optional<?> findResult = data.stream().filter(Objects::nonNull).findFirst();
-            if (!findResult.isPresent()) {
-                log.info("No valid data exists");
-                return htmlToExcelFactory.build(this.getTableWithHeader());
-            }
-            ClassFieldContainer classFieldContainer = ReflectUtil.getAllFieldsOfClass(findResult.get().getClass());
-            List<Field> sortedFields = getFilteredFields(classFieldContainer, groups);
-
-            if (sortedFields.isEmpty()) {
-                log.info("The specified field mapping does not exist");
-                return htmlToExcelFactory.build(this.getTableWithHeader());
-            }
-            List<List<Pair<Class, Object>>> contents = getRenderContent(data, sortedFields);
-
-            this.initStyleMap();
-
-            Table table = this.createTable();
-            Tr thead = this.createThead();
-            if (Objects.nonNull(thead)) {
-                table.getTrList().add(thead);
-            }
-            List<Tr> tbody = this.createTbody(contents, Objects.isNull(thead) ? 0 : 1);
-            table.getTrList().addAll(tbody);
-            tableList.add(table);
-        } else {
-            ClassFieldContainer classFieldContainer = ReflectUtil.getAllFieldsOfClass(dataType);
-            List<Field> sortedFields = getFilteredFields(classFieldContainer, groups);
-
-            if (sortedFields.isEmpty()) {
-                log.info("The specified field mapping does not exist");
-                return htmlToExcelFactory.build(Collections.emptyList());
-            }
-
-            Table table = this.createTable();
-            Tr thead = this.createThead();
-            if (Objects.nonNull(thead)) {
-                table.getTrList().add(thead);
-            }
-            tableList.add(table);
-
-            if (Objects.isNull(data) || data.isEmpty()) {
-                log.info("No valid data exists");
-                return htmlToExcelFactory.build(tableList);
-            }
-
-            this.initStyleMap();
-
-            List<List<Pair<Class, Object>>> contents = getRenderContent(data, sortedFields);
-            List<Tr> tbody = this.createTbody(contents, Objects.isNull(thead) ? 0 : 1);
-            table.getTrList().addAll(tbody);
+    public void close() throws IOException {
+        if (streamExcelBuilder != null) {
+            streamExcelBuilder.close();
         }
-        htmlToExcelFactory.rowAccessWindowSize(rowAccessWindowSize).workbookType(workbookType).autoWidthStrategy(autoWidthStrategy);
-        return htmlToExcelFactory.build(tableList, workbook);
     }
 }

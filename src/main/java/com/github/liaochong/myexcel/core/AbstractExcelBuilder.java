@@ -15,12 +15,15 @@
  */
 package com.github.liaochong.myexcel.core;
 
-import com.github.liaochong.myexcel.core.io.TempFileOperator;
 import com.github.liaochong.myexcel.core.strategy.AutoWidthStrategy;
-import lombok.NonNull;
-import lombok.extern.slf4j.Slf4j;
+import com.github.liaochong.myexcel.core.strategy.WidthStrategy;
+import com.github.liaochong.myexcel.core.templatehandler.TemplateHandler;
+import com.github.liaochong.myexcel.exception.ExcelBuildException;
+import com.github.liaochong.myexcel.utils.ReflectUtil;
+import org.apache.poi.ss.usermodel.Workbook;
 
-import java.util.Objects;
+import java.io.IOException;
+import java.util.Map;
 
 /**
  * excel创建者接口
@@ -28,25 +31,20 @@ import java.util.Objects;
  * @author liaochong
  * @version 1.0
  */
-@Slf4j
 public abstract class AbstractExcelBuilder implements ExcelBuilder {
+
+    protected TemplateHandler templateHandler;
 
     protected HtmlToExcelFactory htmlToExcelFactory = new HtmlToExcelFactory();
 
-    protected TempFileOperator tempFileOperator = new TempFileOperator();
-
-    @Override
-    public AbstractExcelBuilder workbookType(@NonNull WorkbookType workbookType) {
-        htmlToExcelFactory.workbookType(workbookType);
-        if (WorkbookType.isSxlsx(workbookType)) {
-            autoWidthStrategy(AutoWidthStrategy.NO_AUTO);
-        }
-        return this;
+    protected AbstractExcelBuilder(Class<? extends TemplateHandler> templateHandlerClass) {
+        widthStrategy(WidthStrategy.COMPUTE_AUTO_WIDTH);
+        this.templateHandler = ReflectUtil.newInstance(templateHandlerClass);
     }
 
     @Override
-    public AbstractExcelBuilder rowAccessWindowSize(int rowAccessWindowSize) {
-        htmlToExcelFactory.rowAccessWindowSize(rowAccessWindowSize);
+    public AbstractExcelBuilder workbookType(WorkbookType workbookType) {
+        htmlToExcelFactory.workbookType(workbookType);
         return this;
     }
 
@@ -57,14 +55,21 @@ public abstract class AbstractExcelBuilder implements ExcelBuilder {
     }
 
     @Override
-    public AbstractExcelBuilder autoWidthStrategy(@NonNull AutoWidthStrategy autoWidthStrategy) {
-        htmlToExcelFactory.autoWidthStrategy(autoWidthStrategy);
+    public AbstractExcelBuilder widthStrategy(WidthStrategy widthStrategy) {
+        htmlToExcelFactory.widthStrategy(widthStrategy);
+        return this;
+    }
+
+    @Deprecated
+    @Override
+    public AbstractExcelBuilder autoWidthStrategy(AutoWidthStrategy autoWidthStrategy) {
+        htmlToExcelFactory.widthStrategy(AutoWidthStrategy.map(autoWidthStrategy));
         return this;
     }
 
     @Override
     public AbstractExcelBuilder freezePanes(FreezePane... freezePanes) {
-        if (Objects.isNull(freezePanes) || freezePanes.length == 0) {
+        if (freezePanes == null || freezePanes.length == 0) {
             return this;
         }
         htmlToExcelFactory.freezePanes(freezePanes);
@@ -72,25 +77,43 @@ public abstract class AbstractExcelBuilder implements ExcelBuilder {
     }
 
     /**
-     * 分离文件路径
+     * 构建
      *
-     * @param path 文件路径
-     * @return String[]
+     * @param data 模板参数
+     * @return Workbook
      */
-    String[] splitFilePath(String path) {
-        if (Objects.isNull(path) || path.isEmpty()) {
-            throw new NullPointerException();
+    @Override
+    public <T> Workbook build(Map<String, T> data) {
+        String template = templateHandler.render(data);
+        try {
+            return HtmlToExcelFactory.readHtml(template, htmlToExcelFactory).build();
+        } catch (Exception e) {
+            throw new ExcelBuildException("Build excel failure", e);
         }
-        int lastPackageIndex = path.lastIndexOf("/");
-        if (lastPackageIndex == -1) {
-            return new String[]{"/", path};
-        }
-        if (lastPackageIndex == path.length() - 1) {
-            throw new IllegalArgumentException();
-        }
-        String basePackagePath = path.substring(0, lastPackageIndex);
-        String templateName = path.substring(lastPackageIndex + 1);
-        return new String[]{basePackagePath, templateName};
     }
 
+    @Override
+    public ExcelBuilder classpathTemplate(String path) {
+        templateHandler.classpathTemplate(path);
+        return this;
+    }
+
+    @Deprecated
+    @Override
+    public ExcelBuilder template(String path) {
+        return classpathTemplate(path);
+    }
+
+    @Override
+    public ExcelBuilder fileTemplate(String dirPath, String fileName) {
+        templateHandler.fileTemplate(dirPath, fileName);
+        return this;
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (htmlToExcelFactory != null) {
+            htmlToExcelFactory.closeWorkbook();
+        }
+    }
 }

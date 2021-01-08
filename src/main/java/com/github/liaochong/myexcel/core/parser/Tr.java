@@ -15,10 +15,7 @@
  */
 package com.github.liaochong.myexcel.core.parser;
 
-import lombok.AccessLevel;
-import lombok.Data;
-import lombok.experimental.FieldDefaults;
-
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -26,28 +23,89 @@ import java.util.Map;
  * @author liaochong
  * @version 1.0
  */
-@Data
-@FieldDefaults(level = AccessLevel.PRIVATE)
 public class Tr {
 
     /**
      * 索引
      */
-    int index;
+    private int index;
     /**
      * 行单元格
      */
-    List<Td> tdList;
+    private List<Td> tdList = Collections.emptyList();
     /**
      * 最大宽度
      */
-    Map<Integer, Integer> colWidthMap;
+    private Map<Integer, Integer> colWidthMap;
     /**
      * 是否可见
      */
-    boolean visibility = true;
+    private boolean visibility = true;
+    /**
+     * 行高度
+     */
+    private int height;
+    /**
+     * 是否来源于模板
+     */
+    private boolean fromTemplate;
 
-    public Tr(int index) {
+    public Tr(int index, int height) {
         this.index = index;
+        this.height = height;
+    }
+
+    public Tr(int index, int height, boolean fromTemplate) {
+        this.index = index;
+        this.height = height;
+        this.fromTemplate = fromTemplate;
+    }
+
+    public int getIndex() {
+        return this.index;
+    }
+
+    public List<Td> getTdList() {
+        return this.tdList;
+    }
+
+    public Map<Integer, Integer> getColWidthMap() {
+        return this.colWidthMap;
+    }
+
+    public boolean isVisibility() {
+        return this.visibility;
+    }
+
+    public int getHeight() {
+        return this.height;
+    }
+
+    public boolean isFromTemplate() {
+        return this.fromTemplate;
+    }
+
+    public void setIndex(int index) {
+        this.index = index;
+    }
+
+    public void setTdList(List<Td> tdList) {
+        this.tdList = tdList;
+    }
+
+    public void setColWidthMap(Map<Integer, Integer> colWidthMap) {
+        this.colWidthMap = colWidthMap;
+    }
+
+    public void setVisibility(boolean visibility) {
+        this.visibility = visibility;
+    }
+
+    public void setHeight(int height) {
+        this.height = height;
+    }
+
+    public void setFromTemplate(boolean fromTemplate) {
+        this.fromTemplate = fromTemplate;
     }
 }

@@ -15,15 +15,19 @@
  */
 package com.github.liaochong.myexcel.core.parser;
 
+import com.github.liaochong.myexcel.core.constant.Constants;
+import com.github.liaochong.myexcel.core.style.FontStyle;
+import com.github.liaochong.myexcel.utils.RegexpUtil;
 import com.github.liaochong.myexcel.utils.StringUtil;
 import com.github.liaochong.myexcel.utils.StyleUtil;
 import com.github.liaochong.myexcel.utils.TdUtil;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.CharEncoding;
+import org.apache.poi.xssf.usermodel.XSSFRichTextString;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,10 +49,12 @@ import java.util.stream.IntStream;
  * @author liaochong
  * @version 1.0
  */
-@Slf4j
 public class HtmlTableParser {
 
     private static final Pattern DOUBLE_PATTERN = Pattern.compile("^[-+]?(\\d+(\\.\\d*)?|\\.\\d+)([eE]([-+]?([012]?\\d{1,2}|30[0-7])|-3([01]?[4-9]|[012]?[0-3])))?[dD]?$");
+
+    private static final Pattern LINE_FEED_PATTERN = Pattern.compile("\\\\n");
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(HtmlTableParser.class);
 
     private ParseConfig parseConfig;
 
@@ -56,8 +62,13 @@ public class HtmlTableParser {
 
     private String html;
 
-    private HtmlTableParser() {
+    private Map<String, String> defaultLinkStyle = new HashMap<>();
 
+    private XSSFRichTextString spanText;
+
+    private HtmlTableParser() {
+        defaultLinkStyle.put(FontStyle.FONT_COLOR, "blue");
+        defaultLinkStyle.put(FontStyle.TEXT_DECORATION, FontStyle.UNDERLINE);
     }
 
     public static HtmlTableParser of(File htmlFile) {
@@ -85,16 +96,21 @@ public class HtmlTableParser {
         log.info("Start parsing html file");
         long startTime = System.currentTimeMillis();
         Document document;
-        if (Objects.nonNull(htmlFile)) {
+        if (htmlFile != null) {
             document = Jsoup.parse(htmlFile, CharEncoding.UTF_8);
         } else {
             document = Jsoup.parse(html, CharEncoding.UTF_8);
         }
+        document.outputSettings(new Document.OutputSettings().prettyPrint(false));
+        //select all <br> tags and append \n after that
+        document.select("br").after("\\n");
+        //select all <p> tags and prepend \n before that
+        document.select("p").before("\\n");
         this.parseConfig = parseConfig;
-        Elements tableElements = document.getElementsByTag(TableTag.table.name());
+        Elements tableElements = document.getElementsByTag(HtmlTag.table.name());
         List<Table> result = tableElements.stream().map(tableElement -> {
             Table table = new Table();
-            Elements captionElements = tableElement.getElementsByTag(TableTag.caption.name());
+            Elements captionElements = tableElement.getElementsByTag(HtmlTag.caption.name());
             if (!captionElements.isEmpty()) {
                 table.setCaption(captionElements.first().text());
             }
@@ -113,7 +129,7 @@ public class HtmlTableParser {
     private void parseTrOfTable(Table table, Element tableElement, Map<String, String> tableStyle) {
         Map<Element, Map<String, String>> parentStyleMap = new ConcurrentHashMap<>();
 
-        Elements trElements = tableElement.getElementsByTag(TableTag.tr.name());
+        Elements trElements = tableElement.getElementsByTag(HtmlTag.tr.name());
         final Map<Integer, List<Integer>> seizeMap = new HashMap<>();
         List<Tr> trList = IntStream.range(0, trElements.size()).mapToObj(index -> {
             Element trElement = trElements.get(index);
@@ -129,13 +145,14 @@ public class HtmlTableParser {
                     parentStyleMap.putIfAbsent(parent, upperStyle);
                 }
             }
-            Tr tr = new Tr(index);
-            // 行可见性
             Map<String, String> trStyleMap = StyleUtil.mixStyle(upperStyle, StyleUtil.parseStyle(trElement));
+            String height = trStyleMap.get("height");
+            Tr tr = new Tr(index, TdUtil.getValue(height), true);
+            // 行可见性
             tr.setVisibility(!Objects.equals(trStyleMap.get("visibility"), "hidden"));
             this.parseTdOfTr(tr, trElement, trStyleMap, seizeMap);
             return tr;
-        }).collect(Collectors.toList());
+        }).collect(Collectors.toCollection(LinkedList::new));
         table.setTrList(trList);
     }
 
@@ -162,19 +179,20 @@ public class HtmlTableParser {
         int shift = 0;
         for (int i = 0, size = tdElements.size(); i < size; i++) {
             Element tdElement = tdElements.get(i);
-            Td td = new Td();
+            Td td = new Td(tr.getIndex(), i + shift);
             this.setTdContent(tdElement, td);
 
-            td.setTh(Objects.equals(TableTag.th.name(), tdElement.tagName()));
-            td.setRow(tr.getIndex());
-            td.setStyle(StyleUtil.mixStyle(trStyle, StyleUtil.parseStyle(tdElement)));
-            // 除每行第一个单元格外，修正含跨列的单元格位置
-            td.setCol(i + shift);
+            td.setTh(Objects.equals(HtmlTag.th.name(), tdElement.tagName()));
+            Map<String, String> tdStyle = StyleUtil.parseStyle(tdElement);
+            if (tdStyle.isEmpty() && ContentTypeEnum.isLink(td.getTdContentType())) {
+                tdStyle = defaultLinkStyle;
+            }
+            td.setStyle(StyleUtil.mixStyle(trStyle, tdStyle));
 
-            String colSpan = tdElement.attr(TableTag.colspan.name());
+            String colSpan = tdElement.attr(HtmlTag.colspan.name());
             td.setColSpan(TdUtil.getSpan(colSpan));
 
-            String rowSpan = tdElement.attr(TableTag.rowspan.name());
+            String rowSpan = tdElement.attr(HtmlTag.rowspan.name());
             td.setRowSpan(TdUtil.getSpan(rowSpan));
 
             if (!seizeOfTr.isEmpty()) {
@@ -191,12 +209,6 @@ public class HtmlTableParser {
                     checkedPositions.addAll(seizePositions);
                 }
             }
-
-            int rowBound = TdUtil.get(td::getRowSpan, td::getRow);
-            td.setRowBound(rowBound);
-
-            int colBound = TdUtil.get(td::getColSpan, td::getCol);
-            td.setColBound(colBound);
 
             if (td.getRowSpan() > 1) {
                 for (int j = 1, length = td.getRowSpan(); j < length; j++) {
@@ -218,14 +230,24 @@ public class HtmlTableParser {
             // 设置每列宽度
             if (parseConfig.isComputeAutoWidth()) {
                 int width = TdUtil.getStringWidth(td.getContent());
-                colWidthMap.put(td.getCol(), width);
-            } else if (parseConfig.isCustomWidth()) {
-                String widthStr = td.getStyle().get("width");
-                if (Objects.nonNull(widthStr)) {
-                    Integer width = Integer.valueOf(widthStr.replaceAll("\\D*", ""));
-                    if (width > 0) {
-                        colWidthMap.put(td.getCol(), width);
+                if (td.getColSpan() > 1) {
+                    int realWidth = (int) Math.ceil(width * 1.0 / td.getColSpan());
+                    for (int j = 0, span = td.getColSpan(); j < span; j++) {
+                        int colIndex = td.getCol() + j;
+                        Integer colWidth = colWidthMap.get(colIndex);
+                        if (colWidth == null || colWidth < realWidth) {
+                            colWidthMap.put(colIndex, realWidth);
+                        }
                     }
+                } else {
+                    colWidthMap.put(td.getCol(), width);
+                }
+            }
+            String widthStr = td.getStyle().get("width");
+            if (widthStr != null) {
+                int width = TdUtil.getValue(widthStr);
+                if (width >= 0) {
+                    colWidthMap.put(td.getCol(), width);
                 }
             }
         }
@@ -234,30 +256,102 @@ public class HtmlTableParser {
     }
 
     private void setTdContent(Element tdElement, Td td) {
-        String tdContent = tdElement.text();
-        td.setContent(tdContent);
-        if (StringUtil.isBlank(tdContent)) {
+        Elements imgs = tdElement.getElementsByTag(HtmlTag.img.name());
+        if (imgs != null && !imgs.isEmpty()) {
+            String src = imgs.get(0).attr("src");
+            td.setFile(new File(src));
+            td.setTdContentType(ContentTypeEnum.IMAGE);
+            return;
+        }
+        Elements links = tdElement.getElementsByTag(HtmlTag.a.name());
+        if (links != null && !links.isEmpty()) {
+            Element a = links.get(0);
+            td.setContent(a.text());
+            String href = a.attr("href").trim();
+            td.setLink(href);
+            td.setTdContentType(href.startsWith("mailto:") ? ContentTypeEnum.LINK_EMAIL : ContentTypeEnum.LINK_URL);
+            return;
+        }
+        String content = this.parseContent(tdElement, td);
+        td.setContent(content);
+        if (StringUtil.isBlank(content)) {
+            return;
+        }
+        if (tdElement.hasAttr("string")) {
+            return;
+        }
+        if (tdElement.hasAttr("double")) {
+            td.setTdContentType(ContentTypeEnum.DOUBLE);
+            td.setContent(RegexpUtil.removeComma(td.getContent()));
             return;
         }
         // 公式设置
         boolean isFormula = tdElement.hasAttr("formula");
         if (isFormula) {
             td.setFormula(true);
+            String formula = td.getContent().trim();
+            if (formula.startsWith(Constants.EQUAL)) {
+                formula = formula.substring(1);
+            }
+            td.setContent(formula);
             return;
         }
-        if (tdElement.hasAttr("string")) {
+        if (tdElement.hasAttr("url")) {
+            String link = tdElement.attr("url");
+            td.setTdContentType(ContentTypeEnum.LINK_URL);
+            td.setLink(link);
             return;
         }
-        if (Objects.equals(tdContent, "true") || Objects.equals(tdContent, "false")) {
+        if (tdElement.hasAttr("email")) {
+            String link = tdElement.attr("email");
+            td.setTdContentType(ContentTypeEnum.LINK_EMAIL);
+            td.setLink(link);
+            return;
+        }
+        if (tdElement.hasAttr("dropDownList")) {
+            td.setTdContentType(ContentTypeEnum.DROP_DOWN_LIST);
+            return;
+        }
+        if (Constants.TRUE.equals(content) || Constants.FALSE.equals(content)) {
             td.setTdContentType(ContentTypeEnum.BOOLEAN);
             return;
         }
-        if (DOUBLE_PATTERN.matcher(tdContent).matches()) {
+        if (DOUBLE_PATTERN.matcher(content).matches()) {
             td.setTdContentType(ContentTypeEnum.DOUBLE);
         }
     }
 
-    public enum TableTag {
+    private String parseContent(Element tdElement, Td td) {
+        Elements spans = tdElement.getElementsByTag(HtmlTag.span.name());
+        if (spans != null && !spans.isEmpty()) {
+            td.setFonts(new LinkedList<>());
+            if (spanText == null) {
+                spanText = new XSSFRichTextString("");
+            }
+            int startIndex = 0;
+            for (Element spanElement : spans) {
+                String spanContent = spanElement.text();
+                if (spanContent == null) {
+                    continue;
+                }
+                spanContent = LINE_FEED_PATTERN.matcher(spanContent).replaceAll("\n");
+                spanText.setString(spanContent);
+                Font font = new Font();
+                font.setStartIndex(startIndex);
+                font.setEndIndex(startIndex + spanText.length());
+
+                Map<String, String> fontStyle = StyleUtil.parseStyle(spanElement);
+                if (!fontStyle.isEmpty()) {
+                    font.setStyle(fontStyle);
+                    td.getFonts().add(font);
+                }
+                startIndex = font.getEndIndex();
+            }
+        }
+        return LINE_FEED_PATTERN.matcher(tdElement.text()).replaceAll("\n");
+    }
+
+    public enum HtmlTag {
         /**
          * table
          */
@@ -293,6 +387,22 @@ public class HtmlTableParser {
         /**
          * rowspan
          */
-        rowspan;
+        rowspan,
+        /**
+         * link
+         */
+        link,
+        /**
+         * img
+         */
+        img,
+        /**
+         * a
+         */
+        a,
+        /**
+         * span
+         */
+        span;
     }
 }

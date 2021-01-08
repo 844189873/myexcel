@@ -17,9 +17,7 @@ package com.github.liaochong.myexcel.utils;
 
 import com.github.liaochong.myexcel.core.cache.Cache;
 import com.github.liaochong.myexcel.core.cache.WeakCache;
-import lombok.experimental.UtilityClass;
 
-import java.util.Objects;
 import java.util.function.IntSupplier;
 import java.util.regex.Pattern;
 
@@ -28,12 +26,13 @@ import java.util.regex.Pattern;
  * @author liaochong
  * @version 1.0
  */
-@UtilityClass
 public final class TdUtil {
 
     private static Pattern chineseOrCapitalPattern = Pattern.compile("[\u4e00-\u9fa5|A-Z]");
 
     private static Pattern digitalPattern = Pattern.compile("^\\d+$");
+
+    private static Pattern nonDigitalPattern = Pattern.compile("[^\\d]+");
 
     private static final Cache<String, Integer> SPAN_CACHE = new WeakCache<>();
 
@@ -45,15 +44,14 @@ public final class TdUtil {
 
     public static int getSpan(String span) {
         Integer cacheResult = SPAN_CACHE.get(span);
-        if (Objects.nonNull(cacheResult)) {
+        if (cacheResult != null) {
             return cacheResult;
         }
         if (!isSpanValid(span)) {
             SPAN_CACHE.cache(span, 0);
             return 0;
         }
-        int spanVal = Integer.parseInt(span);
-        int result = spanVal > 1 ? spanVal : 0;
+        int result = Integer.parseInt(span);
         SPAN_CACHE.cache(span, result);
         return result;
     }
@@ -67,7 +65,7 @@ public final class TdUtil {
     }
 
     public static int getStringWidth(String s, double shift) {
-        if (Objects.isNull(s)) {
+        if (s == null) {
             return 1;
         }
         // 最小为1
@@ -86,5 +84,13 @@ public final class TdUtil {
         }
         // 进位取整
         return (int) Math.ceil(valueLength);
+    }
+
+    public static int getValue(String v) {
+        if (v == null) {
+            return -1;
+        }
+        String realValue = nonDigitalPattern.matcher(v).replaceAll("");
+        return Integer.parseInt(realValue);
     }
 }

@@ -16,8 +16,10 @@
 package com.github.liaochong.myexcel.core;
 
 import com.github.liaochong.myexcel.core.strategy.AutoWidthStrategy;
+import com.github.liaochong.myexcel.core.strategy.WidthStrategy;
 import org.apache.poi.ss.usermodel.Workbook;
 
+import java.io.Closeable;
 import java.util.Map;
 
 /**
@@ -26,7 +28,7 @@ import java.util.Map;
  * @author liaochong
  * @version 1.0
  */
-public interface ExcelBuilder {
+public interface ExcelBuilder extends Closeable {
 
     /**
      * excel类型
@@ -35,14 +37,6 @@ public interface ExcelBuilder {
      * @return ExcelBuilder
      */
     ExcelBuilder workbookType(WorkbookType workbookType);
-
-    /**
-     * 设置workbookType为SXSSFWorkbook的内存数据保有量
-     *
-     * @param rowAccessWindowSize 内存数据保有量
-     * @return ExcelBuilder
-     */
-    ExcelBuilder rowAccessWindowSize(int rowAccessWindowSize);
 
     /**
      * 使用默认样式
@@ -57,7 +51,16 @@ public interface ExcelBuilder {
      * @param autoWidthStrategy 策略
      * @return ExcelBuilder
      */
+    @Deprecated
     ExcelBuilder autoWidthStrategy(AutoWidthStrategy autoWidthStrategy);
+
+    /**
+     * 宽度策略
+     *
+     * @param widthStrategy 策略
+     * @return ExcelBuilder
+     */
+    ExcelBuilder widthStrategy(WidthStrategy widthStrategy);
 
     /**
      * 选择固定区域
@@ -68,12 +71,30 @@ public interface ExcelBuilder {
     ExcelBuilder freezePanes(FreezePane... freezePanes);
 
     /**
-     * 设置模板
+     * 设置模板，过期，使用classTemplate代替
      *
      * @param path 模板路径
      * @return ExcelBuilder
      */
+    @Deprecated
     ExcelBuilder template(String path);
+
+    /**
+     * 类路径模板
+     *
+     * @param path 类路径
+     * @return ExcelBuilder
+     */
+    ExcelBuilder classpathTemplate(String path);
+
+    /**
+     * 文件路径模板
+     *
+     * @param dirPath  文件夹路径
+     * @param fileName 模板名称
+     * @return ExcelBuilder
+     */
+    ExcelBuilder fileTemplate(String dirPath, String fileName);
 
     /**
      * 构建

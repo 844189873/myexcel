@@ -28,18 +28,34 @@ public enum ContentTypeEnum {
 
     DOUBLE,
 
-    DATE;
+    DATE,
+
+    DROP_DOWN_LIST,
+
+    NUMBER_DROP_DOWN_LIST,
+
+    BOOLEAN_DROP_DOWN_LIST,
+
+    LINK_EMAIL,
+
+    LINK_URL,
+
+    IMAGE;
 
     public static boolean isString(ContentTypeEnum contentTypeEnum) {
-        return STRING.equals(contentTypeEnum);
+        return STRING == contentTypeEnum;
     }
 
     public static boolean isBool(ContentTypeEnum contentTypeEnum) {
-        return BOOLEAN.equals(contentTypeEnum);
+        return BOOLEAN == contentTypeEnum;
     }
 
     public static boolean isDouble(ContentTypeEnum contentTypeEnum) {
-        return DOUBLE.equals(contentTypeEnum);
+        return DOUBLE == contentTypeEnum;
+    }
+
+    public static boolean isLink(ContentTypeEnum contentTypeEnum) {
+        return LINK_URL == contentTypeEnum || LINK_EMAIL == contentTypeEnum;
     }
 
 }

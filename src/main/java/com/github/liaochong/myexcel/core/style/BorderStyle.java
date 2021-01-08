@@ -17,9 +17,13 @@ package com.github.liaochong.myexcel.core.style;
 
 import org.apache.poi.ss.usermodel.CellStyle;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -27,6 +31,8 @@ import java.util.stream.Collectors;
  * @version 1.0
  */
 public final class BorderStyle {
+
+    public static final String BORDER_STYLE = "border-style";
 
     public static final String BORDER_LEFT_STYLE = "border-left-style";
 
@@ -36,7 +42,7 @@ public final class BorderStyle {
 
     public static final String BORDER_BOTTOM_STYLE = "border-bottom-style";
 
-    public static final String THIN = "thin";
+    private static final Pattern BORDER_PATTERN = Pattern.compile("(\\w+)");
 
     private static Map<String, org.apache.poi.ss.usermodel.BorderStyle> borderStyleMap;
 
@@ -46,8 +52,38 @@ public final class BorderStyle {
     }
 
     public static void setBorder(CellStyle cellStyle, Map<String, String> tdStyle) {
-        if (Objects.isNull(tdStyle)) {
+        if (tdStyle == null) {
             return;
+        }
+        String borderStyle = tdStyle.get(BORDER_STYLE);
+        if (borderStyle != null) {
+            Matcher matcher = BORDER_PATTERN.matcher(borderStyle);
+            List<String> styles = new ArrayList<>();
+            while (matcher.find()) {
+                styles.add(matcher.group());
+            }
+            tdStyle = new HashMap<>(tdStyle);
+            if (styles.size() == 1) {
+                tdStyle.put(BORDER_TOP_STYLE, styles.get(0));
+                tdStyle.put(BORDER_RIGHT_STYLE, styles.get(0));
+                tdStyle.put(BORDER_BOTTOM_STYLE, styles.get(0));
+                tdStyle.put(BORDER_LEFT_STYLE, styles.get(0));
+            } else if (styles.size() == 2) {
+                tdStyle.put(BORDER_TOP_STYLE, styles.get(0));
+                tdStyle.put(BORDER_RIGHT_STYLE, styles.get(1));
+                tdStyle.put(BORDER_BOTTOM_STYLE, styles.get(0));
+                tdStyle.put(BORDER_LEFT_STYLE, styles.get(1));
+            } else if (styles.size() == 3) {
+                tdStyle.put(BORDER_TOP_STYLE, styles.get(0));
+                tdStyle.put(BORDER_RIGHT_STYLE, styles.get(1));
+                tdStyle.put(BORDER_BOTTOM_STYLE, styles.get(2));
+                tdStyle.put(BORDER_LEFT_STYLE, styles.get(1));
+            } else if (styles.size() == 4) {
+                tdStyle.put(BORDER_TOP_STYLE, styles.get(0));
+                tdStyle.put(BORDER_RIGHT_STYLE, styles.get(1));
+                tdStyle.put(BORDER_BOTTOM_STYLE, styles.get(2));
+                tdStyle.put(BORDER_LEFT_STYLE, styles.get(3));
+            }
         }
         String borderLeftStyle = tdStyle.get(BORDER_LEFT_STYLE);
         if (borderStyleMap.containsKey(borderLeftStyle)) {
@@ -66,6 +102,4 @@ public final class BorderStyle {
             cellStyle.setBorderBottom(borderStyleMap.get(borderBottomStyle));
         }
     }
-
-
 }

@@ -1,11 +1,10 @@
 /*
- * Copyright 2017 the original author or authors.
+ * Copyright 2019 liaochong
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,32 +15,42 @@
 package com.github.liaochong.myexcel.core;
 
 import com.github.liaochong.myexcel.core.annotation.ExcelColumn;
-import com.github.liaochong.myexcel.core.annotation.ExcelTable;
 import com.github.liaochong.myexcel.core.annotation.ExcludeColumn;
+import com.github.liaochong.myexcel.core.annotation.IgnoreColumn;
+import com.github.liaochong.myexcel.core.constant.BooleanDropDownList;
+import com.github.liaochong.myexcel.core.constant.Constants;
+import com.github.liaochong.myexcel.core.constant.DropDownList;
+import com.github.liaochong.myexcel.core.constant.ImageFile;
+import com.github.liaochong.myexcel.core.constant.LinkEmail;
+import com.github.liaochong.myexcel.core.constant.LinkUrl;
+import com.github.liaochong.myexcel.core.constant.NumberDropDownList;
 import com.github.liaochong.myexcel.core.container.Pair;
-import com.github.liaochong.myexcel.core.container.ParallelContainer;
 import com.github.liaochong.myexcel.core.converter.WriteConverterContext;
 import com.github.liaochong.myexcel.core.parser.ContentTypeEnum;
+import com.github.liaochong.myexcel.core.parser.StyleParser;
 import com.github.liaochong.myexcel.core.parser.Table;
 import com.github.liaochong.myexcel.core.parser.Td;
 import com.github.liaochong.myexcel.core.parser.Tr;
 import com.github.liaochong.myexcel.core.reflect.ClassFieldContainer;
-import com.github.liaochong.myexcel.core.strategy.AutoWidthStrategy;
-import com.github.liaochong.myexcel.core.style.BackgroundStyle;
-import com.github.liaochong.myexcel.core.style.BorderStyle;
-import com.github.liaochong.myexcel.core.style.FontStyle;
-import com.github.liaochong.myexcel.core.style.TextAlignStyle;
+import com.github.liaochong.myexcel.core.strategy.WidthStrategy;
+import com.github.liaochong.myexcel.utils.ConfigurationUtil;
+import com.github.liaochong.myexcel.utils.ReflectUtil;
 import com.github.liaochong.myexcel.utils.StringUtil;
 import com.github.liaochong.myexcel.utils.TdUtil;
-import lombok.NonNull;
 
+import javax.lang.model.type.NullType;
+import java.io.File;
 import java.lang.reflect.Field;
-import java.math.BigDecimal;
+import java.lang.reflect.Modifier;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,124 +61,131 @@ import java.util.stream.IntStream;
  * @author liaochong
  * @version 1.0
  */
-public abstract class AbstractSimpleExcelBuilder implements SimpleExcelBuilder {
-
-    /**
-     * 一般单元格样式
-     */
-    private Map<String, String> commonTdStyle;
-    /**
-     * 偶数行单元格样式
-     */
-    private Map<String, String> evenTdStyle;
-    /**
-     * 标题
-     */
-    private List<String> titles;
-    /**
-     * sheetName
-     */
-    private String sheetName;
+abstract class AbstractSimpleExcelBuilder {
     /**
      * 字段展示顺序
      */
-    private List<String> fieldDisplayOrder;
-    /**
-     * excel workbook
-     */
-    protected WorkbookType workbookType = WorkbookType.XLSX;
-    /**
-     * 内存数据保有量
-     */
-    protected int rowAccessWindowSize;
+    protected List<String> fieldDisplayOrder;
     /**
      * 已排序字段
      */
-    protected List<Field> filteredFields;
+    protected List<Field> filteredFields = Collections.emptyList();
     /**
-     * 设置需要渲染的数据的类类型
+     * 标题
      */
-    protected Class<?> dataType;
-    /**
-     * 无样式
-     */
-    protected boolean noStyle;
-    /**
-     * 自动宽度策略
-     */
-    protected AutoWidthStrategy autoWidthStrategy = AutoWidthStrategy.COMPUTE_AUTO_WIDTH;
-    /**
-     * 全局默认值
-     */
-    private String globalDefaultValue;
+    protected List<String> titles;
     /**
      * 默认值集合
      */
-    private Map<Field, String> defaultValueMap;
+    protected Map<Field, String> defaultValueMap = new HashMap<>();
     /**
      * 自定义宽度
      */
-    private Map<Integer, Integer> customWidthMap;
+    protected Map<Integer, Integer> customWidthMap = new HashMap<>();
+    /**
+     * 标题层级
+     */
+    protected int titleLevel = 0;
+    /**
+     * 格式化
+     */
+    private Map<Integer, String> formats = new HashMap<>();
+    /**
+     * 是否为Map类型导出
+     */
+    protected boolean isMapBuild;
+    /**
+     * 转换上下文
+     */
+    private ConvertContext convertContext;
 
-    @Override
-    public AbstractSimpleExcelBuilder titles(@NonNull List<String> titles) {
-        this.titles = titles;
-        return this;
-    }
+    protected Configuration configuration;
 
-    @Override
-    public AbstractSimpleExcelBuilder sheetName(@NonNull String sheetName) {
-        this.sheetName = sheetName;
-        return this;
-    }
+    private Map<Field, ExcelColumnMapping> excelColumnMappingMap;
 
-    @Override
-    public AbstractSimpleExcelBuilder fieldDisplayOrder(@NonNull List<String> fieldDisplayOrder) {
-        this.fieldDisplayOrder = fieldDisplayOrder;
-        return this;
-    }
+    protected StyleParser styleParser = new StyleParser(customWidthMap);
 
-    @Override
-    public AbstractSimpleExcelBuilder rowAccessWindowSize(int rowAccessWindowSize) {
-        if (rowAccessWindowSize <= 0) {
-            throw new IllegalArgumentException("RowAccessWindowSize must be greater than 0");
-        }
-        this.rowAccessWindowSize = rowAccessWindowSize;
-        return this;
-    }
 
-    @Override
-    public AbstractSimpleExcelBuilder workbookType(@NonNull WorkbookType workbookType) {
-        this.workbookType = workbookType;
-        return this;
-    }
-
-    @Override
-    public AbstractSimpleExcelBuilder noStyle() {
-        this.noStyle = true;
-        return this;
-    }
-
-    @Override
-    public AbstractSimpleExcelBuilder autoWidthStrategy(@NonNull AutoWidthStrategy autoWidthStrategy) {
-        this.autoWidthStrategy = autoWidthStrategy;
-        return this;
+    public AbstractSimpleExcelBuilder(boolean isCsvBuild) {
+        convertContext = new ConvertContext(isCsvBuild);
+        configuration = convertContext.getConfiguration();
+        excelColumnMappingMap = convertContext.getExcelColumnMappingMap();
     }
 
     /**
-     * 获取只有head的table
+     * Core methods for obtaining export related fields, styles, etc
      *
-     * @return table集合
+     * @param classFieldContainer classFieldContainer
+     * @param groups              分组
+     * @return Field
      */
-    protected List<Table> getTableWithHeader() {
-        List<Table> tableList = new ArrayList<>();
-        Table table = this.createTable();
-        tableList.add(table);
-        Tr thead = this.createThead();
-        if (Objects.nonNull(thead)) {
-            table.getTrList().add(thead);
+    protected List<Field> getFilteredFields(ClassFieldContainer classFieldContainer, Class<?>... groups) {
+        ConfigurationUtil.parseConfiguration(classFieldContainer, configuration);
+        this.parseGlobalStyle();
+        List<Field> preElectionFields = this.getPreElectionFields(classFieldContainer);
+        List<Field> buildFields = this.getGroupFields(preElectionFields, groups);
+        // 初始化标题容器
+        List<String> titles = new ArrayList<>(buildFields.size());
+
+        for (int i = 0, size = buildFields.size(); i < size; i++) {
+            Field field = buildFields.get(i);
+            ExcelColumn excelColumn = field.getAnnotation(ExcelColumn.class);
+            String[] columnStyles = null;
+            if (excelColumn != null) {
+                if (configuration.isUseFieldNameAsTitle() && excelColumn.title().isEmpty()) {
+                    titles.add(field.getName());
+                } else {
+                    titles.add(excelColumn.title());
+                }
+                if (!excelColumn.defaultValue().isEmpty()) {
+                    defaultValueMap.put(field, excelColumn.defaultValue());
+                }
+                if (excelColumn.width() > -1) {
+                    customWidthMap.putIfAbsent(i, excelColumn.width());
+                }
+                if (excelColumn.style().length > 0) {
+                    columnStyles = excelColumn.style();
+                }
+                if (!excelColumn.format().isEmpty()) {
+                    formats.put(i, excelColumn.format());
+                } else if (!excelColumn.decimalFormat().isEmpty()) {
+                    formats.put(i, excelColumn.decimalFormat());
+                } else if (!excelColumn.dateFormatPattern().isEmpty()) {
+                    formats.put(i, excelColumn.dateFormatPattern());
+                }
+                ExcelColumnMapping mapping = ExcelColumnMapping.mapping(excelColumn);
+                excelColumnMappingMap.put(field, mapping);
+            } else {
+                if (configuration.isUseFieldNameAsTitle()) {
+                    titles.add(field.getName());
+                } else {
+                    titles.add(null);
+                }
+            }
+            styleParser.setColumnStyle(field, i, columnStyles);
+            setGlobalFormat(i, field);
         }
-        return tableList;
+        setTitles(titles);
+        return buildFields;
+    }
+
+    protected void parseGlobalStyle() {
+        styleParser.parse(configuration.getStyle());
+    }
+
+    private void setGlobalFormat(int i, Field field) {
+        if (formats.get(i) != null) {
+            return;
+        }
+        if (field.getType() == LocalDate.class) {
+            formats.put(i, configuration.getDateFormat());
+        } else if (ReflectUtil.isDate(field.getType())) {
+            formats.put(i, configuration.getDateTimeFormat());
+        } else if (ReflectUtil.isNumber(field.getType())) {
+            if (configuration.getDecimalFormat() != null) {
+                formats.put(i, configuration.getDecimalFormat());
+            }
+        }
     }
 
     /**
@@ -179,8 +195,8 @@ public abstract class AbstractSimpleExcelBuilder implements SimpleExcelBuilder {
      */
     protected Table createTable() {
         Table table = new Table();
-        table.setCaption(sheetName);
-        table.setTrList(new ArrayList<>());
+        table.setCaption(configuration.getSheetName());
+        table.setTrList(new LinkedList<>());
         return table;
     }
 
@@ -189,279 +205,283 @@ public abstract class AbstractSimpleExcelBuilder implements SimpleExcelBuilder {
      *
      * @return 标题行
      */
-    protected Tr createThead() {
-        boolean hasTitles = Objects.nonNull(titles) && !titles.isEmpty();
-        if (!hasTitles) {
-            return null;
+    protected List<Tr> createThead() {
+        if (titles == null || titles.isEmpty()) {
+            return Collections.emptyList();
         }
-        Map<String, String> thStyle;
-        if (noStyle) {
-            thStyle = Collections.emptyMap();
-        } else {
-            thStyle = new HashMap<>(7);
-            thStyle.put(FontStyle.FONT_WEIGHT, FontStyle.BOLD);
-            thStyle.put(FontStyle.FONT_SIZE, "14");
-            thStyle.put(TextAlignStyle.TEXT_ALIGN, TextAlignStyle.CENTER);
-            thStyle.put(TextAlignStyle.VERTICAL_ALIGN, TextAlignStyle.MIDDLE);
-            thStyle.put(BorderStyle.BORDER_BOTTOM_STYLE, BorderStyle.THIN);
-            thStyle.put(BorderStyle.BORDER_LEFT_STYLE, BorderStyle.THIN);
-            thStyle.put(BorderStyle.BORDER_RIGHT_STYLE, BorderStyle.THIN);
-        }
-
-        Tr tr = new Tr(0);
-        boolean isComputeAutoWidth = AutoWidthStrategy.isComputeAutoWidth(autoWidthStrategy);
-        tr.setColWidthMap(isComputeAutoWidth ? new HashMap<>(titles.size()) : Collections.emptyMap());
-
-        List<Td> ths = IntStream.range(0, titles.size()).mapToObj(index -> {
-            Td td = new Td();
-            td.setTh(true);
-            td.setRow(0);
-            td.setRowBound(0);
-            td.setCol(index);
-            td.setColBound(index);
-            td.setContent(titles.get(index));
-            td.setStyle(thStyle);
-            if (isComputeAutoWidth) {
-                tr.getColWidthMap().put(index, TdUtil.getStringWidth(td.getContent(), 0.25));
+        List<List<Td>> tdLists = new ArrayList<>();
+        // 初始化位置信息
+        for (int i = 0; i < titles.size(); i++) {
+            String title = titles.get(i);
+            if (title == null) {
+                continue;
             }
-            return td;
-        }).collect(Collectors.toList());
-        tr.setTdList(ths);
-        return tr;
+            List<Td> tds = new ArrayList<>();
+            String[] multiTitles = title.split(configuration.getTitleSeparator());
+            if (multiTitles.length > titleLevel) {
+                titleLevel = multiTitles.length;
+            }
+            for (int j = 0; j < multiTitles.length; j++) {
+                Td td = new Td(j, i);
+                td.setTh(true);
+                td.setContent(multiTitles[j]);
+                tds.add(td);
+            }
+            tdLists.add(tds);
+        }
+
+        // 调整rowSpan
+        for (List<Td> tdList : tdLists) {
+            Td last = tdList.get(tdList.size() - 1);
+            last.setRowSpan(titleLevel - last.getRow());
+        }
+
+        // 调整colSpan
+        for (int i = 0; i < titleLevel; i++) {
+            int level = i;
+            Map<String, List<List<Td>>> groups = tdLists.stream()
+                    .filter(list -> list.size() > level)
+                    .collect(Collectors.groupingBy(list -> list.get(level).getContent()));
+            groups.forEach((k, v) -> {
+                if (v.size() == 1) {
+                    return;
+                }
+                List<Td> tds = v.stream().map(list -> list.get(level))
+                        .sorted(Comparator.comparing(Td::getCol))
+                        .collect(Collectors.toList());
+
+                List<List<Td>> subTds = new LinkedList<>();
+                // 不同跨行分别处理
+                Map<Integer, List<Td>> partitions = tds.stream().collect(Collectors.groupingBy(Td::getRowSpan));
+                partitions.forEach((col, subTdList) -> {
+                    // 区分开不连续列
+                    int splitIndex = 0;
+                    for (int j = 0, size = subTdList.size() - 1; j < size; j++) {
+                        Td current = subTdList.get(j);
+                        Td next = subTdList.get(j + 1);
+                        if (current.getCol() + 1 != next.getCol()) {
+                            List<Td> sub = subTdList.subList(splitIndex, j + 1);
+                            splitIndex = j + 1;
+                            if (sub.size() <= 1) {
+                                continue;
+                            }
+                            subTds.add(sub);
+                        }
+                    }
+                    subTds.add(subTdList.subList(splitIndex, subTdList.size()));
+                });
+
+                subTds.forEach(val -> {
+                    if (val.size() == 1) {
+                        return;
+                    }
+                    Td t = val.get(0);
+                    t.setColSpan(val.size());
+                    for (int j = 1; j < val.size(); j++) {
+                        val.get(j).setRow(-1);
+                    }
+                });
+            });
+        }
+        Map<Integer, List<Td>> rowTds = tdLists.stream().flatMap(List::stream).filter(td -> td.getRow() > -1).collect(Collectors.groupingBy(Td::getRow));
+        List<Tr> trs = new ArrayList<>();
+        boolean isComputeAutoWidth = WidthStrategy.isComputeAutoWidth(configuration.getWidthStrategy());
+        rowTds.forEach((k, v) -> {
+            Tr tr = new Tr(k, configuration.getTitleRowHeight());
+            tr.setColWidthMap(isComputeAutoWidth ? new HashMap<>(titles.size()) : Collections.emptyMap());
+            List<Td> tds = v.stream().sorted(Comparator.comparing(Td::getCol))
+                    .peek(td -> {
+                        if (isComputeAutoWidth) {
+                            tr.getColWidthMap().put(td.getCol(), TdUtil.getStringWidth(td.getContent(), 0.25));
+                        }
+                    })
+                    .collect(Collectors.toList());
+            tr.setTdList(tds);
+            trs.add(tr);
+        });
+        return trs;
     }
 
     /**
      * 创建内容行
      *
      * @param contents 内容集合
-     * @param shift    行序号偏移量
-     * @return 内容行集合
+     * @return 内容行
      */
-    protected List<Tr> createTbody(List<List<Pair<Class, Object>>> contents, int shift) {
-        boolean isComputeAutoWidth = AutoWidthStrategy.isComputeAutoWidth(autoWidthStrategy);
-        boolean isCustomWidth = AutoWidthStrategy.isCustomWidth(autoWidthStrategy);
-        return IntStream.range(0, contents.size()).parallel().mapToObj(index -> {
-            int trIndex = index + shift;
-            Tr tr = new Tr(trIndex);
-            List<Pair<Class, Object>> dataList = contents.get(index);
-            tr.setColWidthMap((isComputeAutoWidth || isCustomWidth) ? new HashMap<>(dataList.size()) : Collections.emptyMap());
-            Map<String, String> tdStyle = (index & 1) == 0 ? commonTdStyle : evenTdStyle;
-            List<Td> tdList = IntStream.range(0, dataList.size()).mapToObj(i -> {
-                Td td = new Td();
-                td.setRow(trIndex);
-                td.setRowBound(trIndex);
-                td.setCol(i);
-                td.setColBound(i);
-
-                Pair<Class, Object> pair = dataList.get(i);
-                td.setContent(Objects.isNull(pair.getValue()) ? null : String.valueOf(pair.getValue()));
-                Class fieldType = pair.getKey();
-                if (String.class == fieldType) {
-                    // do nothing,user default impl
-                } else if (Boolean.class == fieldType || boolean.class == fieldType) {
-                    td.setTdContentType(ContentTypeEnum.BOOLEAN);
-                } else if (fieldType == Double.class || fieldType == double.class
-                        || fieldType == Float.class || fieldType == float.class
-                        || fieldType == Long.class || fieldType == long.class
-                        || fieldType == Integer.class || fieldType == int.class
-                        || fieldType == Short.class || fieldType == short.class
-                        || fieldType == Byte.class || fieldType == byte.class
-                        || fieldType == BigDecimal.class) {
-                    td.setTdContentType(ContentTypeEnum.DOUBLE);
-                }
-                td.setStyle(tdStyle);
-                if (isComputeAutoWidth) {
-                    tr.getColWidthMap().put(i, TdUtil.getStringWidth(td.getContent()));
-                }
-                return td;
-            }).collect(Collectors.toList());
-            if (isCustomWidth) {
-                customWidthMap.forEach((k, v) -> tr.getColWidthMap().put(k, v));
-            }
-            tr.setTdList(tdList);
-            contents.set(index, null);
+    protected Tr createTr(List<Pair<? extends Class, ?>> contents) {
+        Tr tr = new Tr(0, configuration.getRowHeight());
+        if (contents.isEmpty()) {
             return tr;
+        }
+        tr.setColWidthMap(new HashMap<>());
+        List<Td> tdList = IntStream.range(0, contents.size()).mapToObj(index -> {
+            Td td = new Td(0, index);
+            Pair<? extends Class, ?> pair = contents.get(index);
+            this.setTdContent(td, pair);
+            this.setTdContentType(td, pair.getKey());
+            td.setFormat(formats.get(index));
+            this.setFormula(index, td);
+            this.setTdWidth(tr.getColWidthMap(), td);
+            return td;
         }).collect(Collectors.toList());
+        customWidthMap.forEach(tr.getColWidthMap()::put);
+        tr.setTdList(tdList);
+        return tr;
     }
 
-    /**
-     * 初始化单元格样式
-     */
-    protected void initStyleMap() {
-        if (noStyle) {
-            commonTdStyle = evenTdStyle = Collections.emptyMap();
+    private void setTdWidth(Map<Integer, Integer> colWidthMap, Td td) {
+        if (!configuration.isComputeAutoWidth()) {
+            return;
+        }
+        if (td.getFormat() == null) {
+            colWidthMap.put(td.getCol(), TdUtil.getStringWidth(td.getContent()));
         } else {
-            commonTdStyle = new HashMap<>(3);
-            commonTdStyle.put(BorderStyle.BORDER_BOTTOM_STYLE, BorderStyle.THIN);
-            commonTdStyle.put(BorderStyle.BORDER_LEFT_STYLE, BorderStyle.THIN);
-            commonTdStyle.put(BorderStyle.BORDER_RIGHT_STYLE, BorderStyle.THIN);
-            commonTdStyle.put(TextAlignStyle.VERTICAL_ALIGN, TextAlignStyle.MIDDLE);
-
-            evenTdStyle = new HashMap<>(4);
-            evenTdStyle.put(BackgroundStyle.BACKGROUND_COLOR, "#f6f8fa");
-            evenTdStyle.putAll(commonTdStyle);
+            if (td.getContent() != null && td.getFormat().length() > td.getContent().length()) {
+                colWidthMap.put(td.getCol(), TdUtil.getStringWidth(td.getFormat()));
+            } else if (td.getDate() != null || td.getLocalDate() != null || td.getLocalDateTime() != null) {
+                colWidthMap.put(td.getCol(), TdUtil.getStringWidth(td.getFormat(), -0.15));
+            }
         }
     }
 
-    /**
-     * 获取排序后字段并设置标题、workbookType等
-     *
-     * @param classFieldContainer classFieldContainer
-     * @param groups              分组
-     * @return Field
-     */
-    protected List<Field> getFilteredFields(ClassFieldContainer classFieldContainer, Class<?>... groups) {
-        ExcelTable excelTable = classFieldContainer.getClazz().getAnnotation(ExcelTable.class);
-
-        boolean excelTableExist = Objects.nonNull(excelTable);
-        boolean excludeParent = false;
-        boolean includeAllField = false;
-        if (excelTableExist) {
-            setWorkbookWithExcelTableAnnotation(excelTable);
-            excludeParent = excelTable.excludeParent();
-            includeAllField = excelTable.includeAllField();
-            if (!excelTable.defaultValue().isEmpty()) {
-                globalDefaultValue = excelTable.defaultValue();
-            }
+    private void setFormula(int i, Td td) {
+        if (filteredFields.isEmpty()) {
+            return;
         }
+        Field field = filteredFields.get(i);
+        ExcelColumnMapping excelColumnMapping = excelColumnMappingMap.get(field);
+        if (excelColumnMapping != null && excelColumnMapping.isFormula()) {
+            td.setFormula(true);
+        }
+    }
 
-        List<Field> preelectionFields;
-        if (includeAllField) {
-            if (excludeParent) {
-                preelectionFields = classFieldContainer.getDeclaredFields();
-            } else {
-                preelectionFields = classFieldContainer.getFields();
-            }
+    private void setTdContent(Td td, Pair<? extends Class, ?> pair) {
+        Class fieldType = pair.getKey();
+        if (fieldType == NullType.class) {
+            return;
+        }
+        if (fieldType == Date.class) {
+            td.setDate((Date) pair.getValue());
+        } else if (fieldType == LocalDateTime.class) {
+            td.setLocalDateTime((LocalDateTime) pair.getValue());
+        } else if (fieldType == LocalDate.class) {
+            td.setLocalDate((LocalDate) pair.getValue());
+        } else if (com.github.liaochong.myexcel.core.constant.File.class.isAssignableFrom(fieldType)) {
+            td.setFile((File) pair.getValue());
         } else {
-            if (excludeParent) {
-                preelectionFields = classFieldContainer.getDeclaredFields().stream()
-                        .filter(field -> field.isAnnotationPresent(ExcelColumn.class)).collect(Collectors.toList());
-            } else {
-                preelectionFields = classFieldContainer.getFieldsByAnnotation(ExcelColumn.class);
-            }
-            if (preelectionFields.isEmpty()) {
-                if (Objects.isNull(fieldDisplayOrder) || fieldDisplayOrder.isEmpty()) {
-                    throw new IllegalArgumentException("FieldDisplayOrder is necessary");
-                }
-                this.selfAdaption();
-                return fieldDisplayOrder.stream()
-                        .map(classFieldContainer::getFieldByName)
-                        .collect(Collectors.toList());
+            td.setContent(String.valueOf(pair.getValue()));
+        }
+    }
+
+    private void setTdContentType(Td td, Class fieldType) {
+        if (String.class == fieldType) {
+            return;
+        }
+        if (ReflectUtil.isNumber(fieldType)) {
+            td.setTdContentType(ContentTypeEnum.DOUBLE);
+            return;
+        }
+        if (ReflectUtil.isDate(fieldType)) {
+            td.setTdContentType(ContentTypeEnum.DATE);
+            return;
+        }
+        if (ReflectUtil.isBool(fieldType)) {
+            td.setTdContentType(ContentTypeEnum.BOOLEAN);
+            return;
+        }
+        if (fieldType == DropDownList.class) {
+            td.setTdContentType(ContentTypeEnum.DROP_DOWN_LIST);
+            return;
+        }
+        if (fieldType == NumberDropDownList.class) {
+            td.setTdContentType(ContentTypeEnum.NUMBER_DROP_DOWN_LIST);
+            return;
+        }
+        if (fieldType == BooleanDropDownList.class) {
+            td.setTdContentType(ContentTypeEnum.BOOLEAN_DROP_DOWN_LIST);
+            return;
+        }
+        if (td.getContent() != null && fieldType == LinkUrl.class) {
+            td.setTdContentType(ContentTypeEnum.LINK_URL);
+            setLinkTd(td);
+            return;
+        }
+        if (td.getContent() != null && fieldType == LinkEmail.class) {
+            td.setTdContentType(ContentTypeEnum.LINK_EMAIL);
+            setLinkTd(td);
+            return;
+        }
+        if (td.getFile() != null && fieldType == ImageFile.class) {
+            td.setTdContentType(ContentTypeEnum.IMAGE);
+        }
+    }
+
+    private void setLinkTd(Td td) {
+        String[] splits = td.getContent().split(Constants.ARROW);
+        if (splits.length == 1) {
+            td.setLink(td.getContent());
+        } else {
+            td.setContent(splits[0]);
+            td.setLink(splits[1]);
+        }
+    }
+
+    protected void setTitles(List<String> titles) {
+        if (this.titles == null) {
+            boolean hasTitle = titles.stream().anyMatch(StringUtil::isNotBlank);
+            if (hasTitle) {
+                this.titles = titles;
             }
         }
+    }
 
+    protected List<Field> getGroupFields(List<Field> preElectionFields, Class<?>[] groups) {
         List<Class<?>> selectedGroupList = Objects.nonNull(groups) ? Arrays.stream(groups).filter(Objects::nonNull).collect(Collectors.toList()) : Collections.emptyList();
-        boolean useFieldNameAsTitle = excelTableExist && excelTable.useFieldNameAsTitle();
-        List<String> titles = new ArrayList<>(preelectionFields.size());
-        List<Field> sortedFields = preelectionFields.stream()
-                .filter(field -> !field.isAnnotationPresent(ExcludeColumn.class) && filterFields(selectedGroupList, field))
-                .sorted(this::sortFields)
+        return preElectionFields.stream()
+                .filter(field -> (!field.isAnnotationPresent(ExcludeColumn.class) && !field.isAnnotationPresent(IgnoreColumn.class)) && ReflectUtil.isFieldSelected(selectedGroupList, field))
+                .sorted(ReflectUtil::sortFields)
                 .collect(Collectors.toList());
-        defaultValueMap = new HashMap<>(preelectionFields.size());
-        customWidthMap = new HashMap<>(sortedFields.size());
-        for (int i = 0, size = sortedFields.size(); i < size; i++) {
-            Field field = sortedFields.get(i);
-            ExcelColumn excelColumn = field.getAnnotation(ExcelColumn.class);
-            if (Objects.nonNull(excelColumn)) {
-                if (useFieldNameAsTitle && excelColumn.title().isEmpty()) {
-                    titles.add(field.getName());
-                } else {
-                    titles.add(excelColumn.title());
-                }
-                if (!excelColumn.defaultValue().isEmpty()) {
-                    defaultValueMap.put(field, excelColumn.defaultValue());
-                }
-                if (excelColumn.width() > 0) {
-                    customWidthMap.put(i, excelColumn.width());
-                }
+    }
+
+    protected List<Field> getPreElectionFields(ClassFieldContainer classFieldContainer) {
+        if (Objects.nonNull(fieldDisplayOrder) && !fieldDisplayOrder.isEmpty()) {
+            this.selfAdaption();
+            return fieldDisplayOrder.stream()
+                    .map(classFieldContainer::getFieldByName)
+                    .collect(Collectors.toList());
+        }
+        List<Field> preElectionFields;
+        if (configuration.isIncludeAllField()) {
+            if (configuration.isExcludeParent()) {
+                preElectionFields = classFieldContainer.getDeclaredFields();
             } else {
-                if (useFieldNameAsTitle) {
-                    titles.add(field.getName());
-                } else {
-                    titles.add(null);
-                }
+                preElectionFields = classFieldContainer.getFields();
+            }
+        } else {
+            if (configuration.isExcludeParent()) {
+                preElectionFields = classFieldContainer.getDeclaredFields().stream()
+                        .filter(field -> field.isAnnotationPresent(ExcelColumn.class))
+                        .collect(Collectors.toList());
+            } else {
+                preElectionFields = classFieldContainer.getFieldsByAnnotation(ExcelColumn.class);
             }
         }
-
-        boolean hasTitle = titles.stream().anyMatch(StringUtil::isNotBlank);
-        if (hasTitle) {
-            this.titles = titles;
+        if (configuration.isIgnoreStaticFields()) {
+            preElectionFields = preElectionFields.stream()
+                    .filter(field -> !Modifier.isStatic(field.getModifiers()))
+                    .collect(Collectors.toList());
         }
-        return sortedFields;
-    }
-
-    private boolean filterFields(List<Class<?>> selectedGroupList, Field field) {
-        if (selectedGroupList.isEmpty()) {
-            return true;
-        }
-        ExcelColumn excelColumn = field.getAnnotation(ExcelColumn.class);
-        if (Objects.isNull(excelColumn)) {
-            return false;
-        }
-        Class<?>[] groupArr = excelColumn.groups();
-        if (groupArr.length == 0) {
-            return false;
-        }
-        List<Class<?>> reservedGroupList = Arrays.stream(groupArr).collect(Collectors.toList());
-        return reservedGroupList.stream().anyMatch(selectedGroupList::contains);
-    }
-
-    private int sortFields(Field field1, Field field2) {
-        ExcelColumn excelColumn1 = field1.getAnnotation(ExcelColumn.class);
-        ExcelColumn excelColumn2 = field2.getAnnotation(ExcelColumn.class);
-        if (Objects.isNull(excelColumn1) && Objects.isNull(excelColumn2)) {
-            return 0;
-        }
-        int defaultOrder = 0;
-        int order1 = defaultOrder;
-        if (Objects.nonNull(excelColumn1)) {
-            order1 = excelColumn1.order();
-        }
-        int order2 = defaultOrder;
-        if (Objects.nonNull(excelColumn2)) {
-            order2 = excelColumn2.order();
-        }
-        if (order1 == order2) {
-            return 0;
-        }
-        return order1 > order2 ? 1 : -1;
-    }
-
-    /**
-     * 设置workbook
-     *
-     * @param excelTable excelTable
-     */
-    private void setWorkbookWithExcelTableAnnotation(ExcelTable excelTable) {
-        if (Objects.isNull(workbookType)) {
-            this.workbookType = excelTable.workbookType();
-        }
-        if (this.rowAccessWindowSize <= 0) {
-            int rowAccessWindowSize = excelTable.rowAccessWindowSize();
-            if (rowAccessWindowSize > 0) {
-                this.rowAccessWindowSize = rowAccessWindowSize;
-            }
-        }
-        if (StringUtil.isBlank(this.sheetName)) {
-            String sheetName = excelTable.sheetName();
-            if (StringUtil.isNotBlank(sheetName)) {
-                this.sheetName = sheetName;
-            }
-        }
+        return preElectionFields;
     }
 
     /**
      * 展示字段order与标题title长度一致性自适应
      */
     private void selfAdaption() {
-        if (Objects.isNull(titles) || titles.isEmpty()) {
+        if (titles == null || titles.isEmpty()) {
             return;
         }
-        if (fieldDisplayOrder.size() < titles.size()) {
-            for (int i = 0, size = titles.size() - fieldDisplayOrder.size(); i < size; i++) {
-                fieldDisplayOrder.add(null);
-            }
-        } else {
+        if (fieldDisplayOrder.size() > titles.size()) {
             for (int i = 0, size = fieldDisplayOrder.size() - titles.size(); i < size; i++) {
                 titles.add(null);
             }
@@ -473,33 +493,51 @@ public abstract class AbstractSimpleExcelBuilder implements SimpleExcelBuilder {
      *
      * @param data         数据集合
      * @param sortedFields 排序字段
+     * @param <T>          泛型
      * @return 结果集
      */
-    protected List<List<Pair<Class, Object>>> getRenderContent(List<?> data, List<Field> sortedFields) {
-        List<ParallelContainer> resolvedDataContainers = IntStream.range(0, data.size()).parallel().mapToObj(index -> {
-            List<Pair<? extends Class, ?>> resolvedDataList = sortedFields.stream()
-                    .map(field -> {
-                        Pair<? extends Class, Object> value = WriteConverterContext.convert(field, data.get(index));
-                        if (Objects.nonNull(value.getValue())) {
-                            return value;
-                        }
-                        String defaultValue = defaultValueMap.get(field);
-                        if (Objects.nonNull(defaultValue)) {
-                            return new Pair<>(field.getType(), defaultValue);
-                        }
-                        if (Objects.nonNull(globalDefaultValue)) {
-                            return new Pair<>(field.getType(), globalDefaultValue);
-                        }
+    protected <T> List<Pair<? extends Class, ?>> getRenderContent(T data, List<Field> sortedFields) {
+        return sortedFields.stream()
+                .map(field -> {
+                    Pair<? extends Class, Object> value = WriteConverterContext.convert(field, data, convertContext);
+                    if (value.getValue() != null) {
                         return value;
-                    })
-                    .collect(Collectors.toList());
-            data.set(index, null);
-            return new ParallelContainer<>(index, resolvedDataList);
-        }).collect(Collectors.toList());
+                    }
+                    String defaultValue = defaultValueMap.get(field);
+                    if (defaultValue != null) {
+                        return Pair.of(String.class, defaultValue);
+                    }
+                    if (configuration.getDefaultValue() != null) {
+                        return Pair.of(String.class, configuration.getDefaultValue());
+                    }
+                    return value;
+                })
+                .collect(Collectors.toCollection(LinkedList::new));
+    }
 
-        // 重排序
-        return resolvedDataContainers.stream()
-                .sorted(Comparator.comparing(ParallelContainer::getIndex))
-                .map(ParallelContainer<List<Pair<Class, Object>>>::getData).collect(Collectors.toList());
+    protected List<Pair<? extends Class, ?>> assemblingMapContents(Map<String, Object> data) {
+        if (data == null || data.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Pair<? extends Class, ?>> contents = new ArrayList<>(data.size());
+        if (fieldDisplayOrder == null) {
+            data.forEach((k, v) -> {
+                this.doAddToContents(contents, v);
+            });
+        } else {
+            for (String fieldName : fieldDisplayOrder) {
+                Object val = data.get(fieldName);
+                this.doAddToContents(contents, val);
+            }
+        }
+        return contents;
+    }
+
+    private void doAddToContents(List<Pair<? extends Class, ?>> contents, Object v) {
+        if (v instanceof Pair && ((Pair) v).getKey() instanceof Class) {
+            contents.add((Pair) v);
+        } else {
+            contents.add(Pair.of(v == null ? NullType.class : v.getClass(), v));
+        }
     }
 }
